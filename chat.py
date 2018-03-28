@@ -42,9 +42,8 @@ def parse_command(command):
     parts = command.split(" ")
     return parts
 
-test = {"biggieboo":("127.0.0.1", 8889)}
-
-def search_user(user):
+def search_user(user): # for test
+    test = {"biggieboo":("127.0.0.1", 8889)}
     return test.get(user)
 
 async def execute_command(command, loop=None):
@@ -66,27 +65,31 @@ async def execute_command(command, loop=None):
             coro = None
         return coro
 
-loop = asyncio.get_event_loop()
-# Each client connection will create a new protocol instance
-first_message = ""
-coro = loop.create_server(lambda: ChatProtocol(loop, first_message), '', 8888)
-server = loop.run_until_complete(coro)
+def main():
+    loop = asyncio.get_event_loop()
+    # Each client connection will create a new protocol instance
+    first_message = ""
+    coro = loop.create_server(lambda: ChatProtocol(loop, first_message), '', 8888)
+    server = loop.run_until_complete(coro)
 
-# Serve requests until Ctrl+C is pressed
-print('Serving on {}'.format(server.sockets[0].getsockname()))
-try:
-    while True:
-        command = loop.run_until_complete(input_message())
-        if command:
-            command = command.decode()
-            coro = loop.run_until_complete(execute_command(command))
-            if coro:
-                loop.run_until_complete(coro)
-    # loop.run_forever()
-except KeyboardInterrupt:
-    pass
+    # Serve requests until Ctrl+C is pressed
+    print('Serving on {}'.format(server.sockets[0].getsockname()))
+    try:
+        while True:
+            command = loop.run_until_complete(input_message())
+            if command:
+                command = command.decode()
+                coro = loop.run_until_complete(execute_command(command))
+                if coro:
+                    loop.run_until_complete(coro)
+        # loop.run_forever()
+    except KeyboardInterrupt:
+        pass
 
-# Close the server
-server.close()
-loop.run_until_complete(server.wait_closed())
-loop.close()
+    # Close the server
+    server.close()
+    loop.run_until_complete(server.wait_closed())
+    loop.close()
+
+if __name__ == "__main__":
+    main()
