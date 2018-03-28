@@ -81,7 +81,10 @@ def main():
                 command = command.decode()
                 coro = loop.run_until_complete(execute_command(command))
                 if coro:
-                    loop.run_until_complete(coro)
+                    try:
+                        loop.run_until_complete(coro)
+                    except ConnectionRefusedError:
+                        print("Error: connection refused")
         # loop.run_forever()
     except KeyboardInterrupt:
         pass
