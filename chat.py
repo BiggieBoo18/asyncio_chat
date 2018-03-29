@@ -69,7 +69,7 @@ def main():
     loop = asyncio.get_event_loop()
     # Each client connection will create a new protocol instance
     first_message = ""
-    coro = loop.create_server(lambda: ChatProtocol(loop, first_message), '', 8889)
+    coro = loop.create_server(lambda: ChatProtocol(loop, first_message), '', 8888)
     server = loop.run_until_complete(coro)
 
     # Serve requests until Ctrl+C is pressed
@@ -81,7 +81,10 @@ def main():
                 command = command.decode()
                 coro = loop.run_until_complete(execute_command(command))
                 if coro:
-                    loop.run_until_complete(coro)
+                    try:
+                        loop.run_until_complete(coro)
+                    except ConnectionRefusedError:
+                        print("Error: connection refused")
         # loop.run_forever()
     except KeyboardInterrupt:
         pass
