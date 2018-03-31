@@ -28,7 +28,7 @@ class Owner(object):
     def execute_command(self, writer, command, peername=None):
         parts = self.parse_command(command)
         if parts[0]=="join":   # join
-            self.members[parts[0]] = (peername[0], 8888)
+            self.members[parts[1]] = (peername[0], 8888)
             writer.write(bytes("registered {}".format(peername), sys.getdefaultencoding()))
             yield from writer.drain()
         elif parts[0]=="send": # send
