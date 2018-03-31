@@ -25,28 +25,36 @@ class Owner(object):
         return self.members.get(username)
 
     @asyncio.coroutine
+    def write_message(self, parts, message):
+        # search member
+        info = self.search_member(parts[1])
+        if info:
+            addr, port = info
+            connect = asyncio.open_connection(addr, port)
+            remote_reader, remote_writer = yield from connect
+            remote_writer.write(bytes(message, sys.getdefaultencoding()))
+            yield from remote_writer.drain()
+            remote_writer.close()
+
+    @asyncio.coroutine
     def execute_command(self, writer, command, peername=None):
         parts = self.parse_command(command)
         if parts[0]=="join":   # join
-            self.members[parts[1]] = (peername[0], 8888)
-            writer.write(bytes("registered {}".format(peername), sys.getdefaultencoding()))
-            yield from writer.drain()
+            self.members[parts[1]] = (peername[0], 1819)
+            yield from self.write_message(parts, "registered {}".format(peername))
+            # connect = asyncio.open_connection("127.0.0.1", 8889)
+            # remote_reader, remote_writer = yield from connect
+            # remote_writer.write(bytes("registered {}".format(peername), sys.getdefaultencoding()))
+            # yield from remote_writer.drain()
+            # remote_writer.close()
         elif parts[0]=="send": # send
             if len(parts)<3:
                 return None
-            # search member
-            info = self.search_member(parts[1])
-            if info:
-                addr, port = info
-                connect = asyncio.open_connection(addr, port)
-                remote_reader, remote_writer = yield from connect
-                remote_writer.write(bytes(" ".join(parts[:2]), sys.getdefaultencoding()))
-                yield from remote_writer.drain()
-                remote_writer.close()
+            yield from self.write_message(parts, " ".join(parts[2:]))
 
     def main(self):
         loop = asyncio.get_event_loop()
-        coro = asyncio.start_server(self.handle_echo, '', 8888, loop=loop)
+        coro = asyncio.start_server(self.handle_echo, '', 1818, loop=loop)
         server = loop.run_until_complete(coro)
 
         # Serve requests until Ctrl+C is pressed
