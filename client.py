@@ -1,25 +1,72 @@
 import asyncio
 
-class EchoClientProtocol(asyncio.Protocol):
-    def __init__(self, message, loop):
-        self.message = message
-        self.loop = loop
+def watch_stdin():
+    msg = input()
+    return msg
 
-    def connection_made(self, transport):
-        transport.write(self.message.encode())
-        print('Data sent: {!r}'.format(self.message))
+class Client:
+    reader = None
+    writer = None
+    sockname = None
 
-    def data_received(self, data):
-        print('Data received: {!r}'.format(data.decode()))
+    def __init__(self, host='127.0.0.1', port=8089):
+        self.host = host
+        self.port = port
 
-    def connection_lost(self, exc):
-        print('The server closed the connection')
-        print('Stop the event loop')
-        self.loop.stop()
+    def send_msg(self, msg):
+        msg = '{}\n'.format(msg).encode()
+        self.writer.write(msg)
 
-loop = asyncio.get_event_loop()
-message = 'Hello World!'
-coro = loop.create_connection(lambda: EchoClientProtocol(message, loop), '127.0.0.1', 8888)
-loop.run_until_complete(coro)
-loop.run_forever()
-loop.close()
+    def close(self):
+        print('Closing.')
+        if self.writer:
+            self.send_msg('close()')
+        mainloop = asyncio.get_event_loop()
+        mainloop.stop()
+
+    @asyncio.coroutine
+    def create_input(self):
+        while True:
+            mainloop = asyncio.get_event_loop()
+            future = mainloop.run_in_executor(None, watch_stdin)
+            input_message = yield from future
+            if input_message == 'close()' or not self.writer:
+                self.close()
+                break
+            elif input_message:
+                mainloop.call_soon_threadsafe(self.send_msg, input_message)
+
+    @asyncio.coroutine
+    def connect(self):
+        print('Connecting...')
+        try:
+            reader, writer = yield from asyncio.open_connection(self.host, self.port)
+            asyncio.ensure_future(self.create_input())
+            self.reader = reader
+            self.writer = writer
+            self.sockname = writer.get_extra_info('sockname')
+            while not reader.at_eof():
+                msg = yield from reader.readline()
+                if msg:
+                    print('{}'.format(msg.decode().strip()))
+            print('The server closed the connection, press <enter> to exit.')
+            self.writer = None
+        except ConnectionRefusedError as e:
+            print('Connection refused: {}'.format(e))
+            self.close()
+
+def main():
+    loop = asyncio.get_event_loop()
+    client = Client()
+    asyncio.ensure_future(client.connect())
+    try:
+        loop.run_forever()
+    except KeyboardInterrupt:
+        # Raising and going through a keyboard interrupt will not interrupt the Input
+        # So, do not stop using ctrl-c, the program will deadlock waiting for watch_stdin()
+        print('Got keyboard interrupt <ctrl-C>, please send "close()" to exit.')
+        loop.run_forever()
+    loop.close()
+
+if __name__ == '__main__':
+    main()
