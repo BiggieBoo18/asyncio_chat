@@ -9,7 +9,7 @@ class Client:
     writer = None
     sockname = None
 
-    def __init__(self, host='127.0.0.1', port=8089):
+    def __init__(self, host='127.0.0.1', port=1818):
         self.host = host
         self.port = port
 
