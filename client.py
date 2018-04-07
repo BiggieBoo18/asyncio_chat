@@ -10,8 +10,9 @@ class Client:
     sockname = None
 
     def __init__(self, host='127.0.0.1', port=1818):
-        self.host = host
-        self.port = port
+        self.host     = host
+        self.port     = port
+        self.username = ""
 
     def send_msg(self, msg):
         msg = '{}\n'.format(msg).encode()
@@ -30,11 +31,44 @@ class Client:
             mainloop = asyncio.get_event_loop()
             future = mainloop.run_in_executor(None, watch_stdin)
             input_message = yield from future
+            part_msg = input_message.split()
             if input_message == 'close()' or not self.writer:
                 self.close()
                 break
-            elif input_message:
+            elif len(part_msg)>1 and part_msg[0]=="join":
+                self.username = part_msg[1]
+            if input_message:
                 mainloop.call_soon_threadsafe(self.send_msg, input_message)
+
+    def execute_command(self, msg):
+        part_msg = msg.split(" ")
+        if part_msg[0]=="janken":
+            if part_msg[2]=="start":
+                while True:
+                    result = input("janken ([G]u, [C]hoki, [P]a): ")
+                    if result in ["G", "Gu", "g", "gu"]:
+                        result = "G"
+                        break
+                    elif result in ["C", "Choki", "c", "choki"]:
+                        result = "C"
+                        break
+                    elif result in ["P", "Pa", "p", "pa"]:
+                        result = "P"
+                        break
+                self.send_msg("janken {} result {}".format(part_msg[1], result))
+            elif part_msg[2]=="You":
+                print(part_msg)
+            else:
+                while True:
+                    acception = input("{} accept ([Y]es or [N]o): ".format(" ".join(part_msg[2:])))
+                    if acception in ["Yes", "Y", "yes", "y"]:
+                        self.send_msg("janken {} accept".format(part_msg[1]))
+                        break
+                    elif acception in ["No", "N", "no", "n"]:
+                        self.send_msg("janken {} refuse".format(part_msg[1]))
+                    break
+        else:
+            print('{}'.format(msg))
 
     @asyncio.coroutine
     def connect(self):
@@ -47,8 +81,9 @@ class Client:
             self.sockname = writer.get_extra_info('sockname')
             while not reader.at_eof():
                 msg = yield from reader.readline()
-                if msg:
-                    print('{}'.format(msg.decode().strip()))
+                # if msg:
+                #     print('{}'.format(msg.decode().strip()))
+                self.execute_command(msg.decode().strip())
             print('The server closed the connection, press <enter> to exit.')
             self.writer = None
         except ConnectionRefusedError as e:

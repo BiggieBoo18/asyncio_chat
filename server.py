@@ -13,6 +13,7 @@ class Server:
         self.port = port
         self.clients = {}
         self.groups  = {}
+        self.janken  = {}
 
     @asyncio.coroutine
     def run_server(self):
@@ -68,6 +69,22 @@ class Server:
         else:
             return False
 
+    def game_results(self, results):
+        result1, result2 = results
+        # (Win, Lose)
+        if ((result1=="G" and result2=="C") or
+            (result1=="C" and result2=="P") or
+            (result1=="P" and result2=="G")):
+            return ("Win", "Lose")
+        # (Lose, Win)
+        elif ((result1=="G" and result2=="P") or
+              (result1=="C" and result2=="G") or
+              (result1=="P" and result2=="C")):
+            return ("Lose", "Win")
+        # (Draw, Draw)
+        else:
+            return ("Draw", "Draw")
+
     def execute_command(self, peername, new_client, msg, username):
         part_msg = msg.split(" ")
         if part_msg[0]=="join": # join command
@@ -97,10 +114,40 @@ class Server:
             else:
                 self.send_to_client(peername, "[Error] Invalid command: {}".format(msg))
         elif part_msg[0]=="janken": # janken command
-            if len(part_msg)>1: # "janken username
-                opponent      = part_msg[1]
-                if not self.send_to_client(opponent, "janken {} Recieved a janken challenge from {}".format(username, username)):
-                    self.send_to_client(username, "[Error] Opponent is not found: {}".format(opponent))
+            if len(part_msg)>1: # "janken username" "janken username *args"
+                opponent = part_msg[1]
+                if ((username, opponent) in self.janken or
+                    (opponent, username) in self.janken):
+                    if len(part_msg)>2:
+                        if part_msg[2]=="accept":
+                            self.send_to_client(username, "janken {} start".format(opponent))
+                            self.send_to_client(opponent, "janken {} start".format(username))
+                        elif part_msg[2]=="refuse":
+                            self.janken.pop((username, opponent), None)
+                            self.janken.pop((opponent, username), None)
+                            self.send_to_client(username, "refused janken challenge {} vs {}".format(username, opponent))
+                            self.send_to_client(opponent, "refused janken challenge {} vs {}".format(username, opponent))
+                        if part_msg[2]=="result":
+                            if (username, opponent) in self.janken:
+                                results = self.janken[(username, opponent)]
+                                results[0] = part_msg[3]
+                                if not None in results:
+                                    results = self.game_results(results)
+                                    self.send_to_client(username, "janken {} You {}".format(opponent, results[0]))
+                                    self.send_to_client(opponent, "janken {} You {}".format(username, results[1]))
+                                    self.janken.pop((username, opponent))
+                            elif (opponent, username) in self.janken:
+                                results = self.janken[(opponent, username)]
+                                results[1] = part_msg[3]
+                                if not None in results:
+                                    results = self.game_results(results)
+                                    self.send_to_client(username, "janken {} You {}".format(opponent, results[1]))
+                                    self.send_to_client(opponent, "janken {} You {}".format(username, results[0]))
+                                    self.janken.pop((opponent, username))
+                else:
+                    self.janken[(username, opponent)] = [None, None]
+                    if not self.send_to_client(opponent, "janken {} Recieved a janken challenge from {}".format(username, username)):
+                        self.send_to_client(username, "[Error] Opponent is not found: {}".format(opponent))
             else:
                 self.send_to_client(peername, "[Error] Invalid command: {}".format(msg))
 
