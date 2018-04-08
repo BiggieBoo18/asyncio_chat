@@ -1,6 +1,9 @@
 import asyncio
 from collections import namedtuple
 
+# constant
+LIFEPOINTS = 3 # If janken result is win, LIFEPOINTS increase, or lose, LIFEPOINTS decrease
+
 Client = namedtuple("Client", "reader writer")
 
 class Server:
@@ -27,6 +30,7 @@ class Server:
     def send_to_client(self, name, msg):
         client = self.clients.get(name)
         if client:
+            client = client[0]
             print("Sending to {}".format(name))
             client.writer.write("{}\n".format(msg).encode())
             return True
@@ -47,17 +51,17 @@ class Server:
         print("Got message {}, send to all clients".format(msg))
         for client_peername, client in self.clients.items():
             print("Sending to {}".format(client_peername))
-            client.writer.write("{}: {}\n".format(peername, msg).encode())
+            client[0].writer.write("{}: {}\n".format(peername, msg).encode())
         return
 
     def close_clients(self):
         print("Sending EndOfFile to all clients to close them.")
         for peername, client in self.clients.items():
-            client.writer.write_eof()
+            client[0].writer.write_eof()
 
     def register_user(self, username, client):
         if not self.clients.get(username):
-            self.clients[username] = client
+            self.clients[username] = [client, LIFEPOINTS]
             return True
         else:
             return False
@@ -68,6 +72,28 @@ class Server:
             return True
         else:
             return False
+
+    def send_accept(self, username, opponent):
+        self.send_to_client(username, "janken {} start".format(opponent))
+        self.send_to_client(opponent, "janken {} start".format(username))
+
+    def send_refuse(self, username, opponent):
+        self.janken.pop((username, opponent), None)
+        self.janken.pop((opponent, username), None)
+        self.send_to_client(username, "refused janken challenge {} vs {}".format(username, opponent))
+        self.send_to_client(opponent, "refused janken challenge {} vs {}".format(username, opponent))
+
+    def check_qualified(self, username, opponent):
+        ret  = True
+        user = self.clients.get(username)
+        oppo = self.clients.get(opponent)
+        if not (user and oppo):
+            return False
+        user_lifepoints = user[1]
+        oppo_lifepoints = oppo[1]
+        if user_lifepoints==0 or oppo_lifepoints==0:
+            ret = False
+        return ret
 
     def game_results(self, results):
         result1, result2 = results
@@ -84,6 +110,43 @@ class Server:
         # (Draw, Draw)
         else:
             return ("Draw", "Draw")
+
+    def change_lifepoints(self, name, result):
+        ret = True
+        client_info = self.clients.get(name)
+        if not client_info:
+            return False
+        if result=="Win":
+            client_info[1] += 1
+        elif result=="Lose":
+            client_info[1] -= 1
+        elif result=="Draw":
+            pass
+        else:
+            ret = False
+        return ret
+
+    def send_result(self, username, opponent, part_msg):
+        if (username, opponent) in self.janken:
+            results = self.janken[(username, opponent)]
+            results[0] = part_msg[3]
+            if not None in results:
+                results = self.game_results(results)
+                self.send_to_client(username, "janken {} You {}".format(opponent, results[0]))
+                self.send_to_client(opponent, "janken {} You {}".format(username, results[1]))
+                self.change_lifepoints(opponent, results[1])
+                self.change_lifepoints(username, results[0])
+                self.janken.pop((username, opponent))
+        elif (opponent, username) in self.janken:
+            results = self.janken[(opponent, username)]
+            results[1] = part_msg[3]
+            if not None in results:
+                results = self.game_results(results)
+                self.send_to_client(username, "janken {} You {}".format(opponent, results[1]))
+                self.send_to_client(opponent, "janken {} You {}".format(username, results[0]))
+                self.change_lifepoints(opponent, results[0])
+                self.change_lifepoints(username, results[1])
+                self.janken.pop((opponent, username))
 
     def execute_command(self, peername, new_client, msg, username):
         part_msg = msg.split(" ")
@@ -116,47 +179,37 @@ class Server:
         elif part_msg[0]=="janken": # janken command
             if len(part_msg)>1: # "janken username" "janken username *args"
                 opponent = part_msg[1]
-                if ((username, opponent) in self.janken or
+                print("username:{}, opponent:{}".format(username, opponent))
+                if not self.check_qualified(username, opponent):
+                    self.send_to_client(username, "[Error] {} or {} is not qualified to play janken".format(username, opponent))
+                    self.send_to_client(opponent, "[Error] {} or {} is not qualified to play janken".format(username, opponent))
+                elif ((username, opponent) in self.janken or
                     (opponent, username) in self.janken):
                     if len(part_msg)>2:
                         if part_msg[2]=="accept":
-                            self.send_to_client(username, "janken {} start".format(opponent))
-                            self.send_to_client(opponent, "janken {} start".format(username))
+                            self.send_accept(username, opponent)
                         elif part_msg[2]=="refuse":
-                            self.janken.pop((username, opponent), None)
-                            self.janken.pop((opponent, username), None)
-                            self.send_to_client(username, "refused janken challenge {} vs {}".format(username, opponent))
-                            self.send_to_client(opponent, "refused janken challenge {} vs {}".format(username, opponent))
+                            self.send_refuse(username, opponent)
                         if part_msg[2]=="result":
-                            if (username, opponent) in self.janken:
-                                results = self.janken[(username, opponent)]
-                                results[0] = part_msg[3]
-                                if not None in results:
-                                    results = self.game_results(results)
-                                    self.send_to_client(username, "janken {} You {}".format(opponent, results[0]))
-                                    self.send_to_client(opponent, "janken {} You {}".format(username, results[1]))
-                                    self.janken.pop((username, opponent))
-                            elif (opponent, username) in self.janken:
-                                results = self.janken[(opponent, username)]
-                                results[1] = part_msg[3]
-                                if not None in results:
-                                    results = self.game_results(results)
-                                    self.send_to_client(username, "janken {} You {}".format(opponent, results[1]))
-                                    self.send_to_client(opponent, "janken {} You {}".format(username, results[0]))
-                                    self.janken.pop((opponent, username))
+                            self.send_result(username, opponent, part_msg)
                 else:
                     self.janken[(username, opponent)] = [None, None]
                     if not self.send_to_client(opponent, "janken {} Recieved a janken challenge from {}".format(username, username)):
                         self.send_to_client(username, "[Error] Opponent is not found: {}".format(opponent))
             else:
                 self.send_to_client(peername, "[Error] Invalid command: {}".format(msg))
+        elif part_msg[0]=="myinfo": # myinfo command
+            client_info = self.clients.get(username)
+            self.send_to_client(username, "Your infomation: lifepoints={}".format(client_info[1]))
+        else:
+            self.send_to_client(peername, "[Error] Invalid command: {}".format(msg))
 
     @asyncio.coroutine
     def client_connected(self, reader, writer):
         print("Client connected.")
         peername = writer.transport.get_extra_info("peername")
         new_client = Client(reader, writer)
-        self.clients[peername] = new_client
+        self.clients[peername] = [new_client, 0]
         # self.send_to_client(peername, "Welcome to this server client: {}".format(peername))
         username = ""
         while not reader.at_eof():
