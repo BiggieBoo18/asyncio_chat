@@ -45,20 +45,21 @@ class Client:
         if part_msg[0]=="janken":
             if part_msg[2]=="start":
                 while True:
+                    print("Your choices:", part_msg[3:], "\n<press Enter>")
                     result = input("janken ([G]u, [C]hoki, [P]a): ")
                     if result in ["G", "Gu", "g", "gu"]:
                         result = "G"
-                        break
                     elif result in ["C", "Choki", "c", "choki"]:
                         result = "C"
-                        break
                     elif result in ["P", "Pa", "p", "pa"]:
                         result = "P"
+                    if result in part_msg[3:]:
                         break
                 self.send_msg("janken {} result {}".format(part_msg[1], result))
             elif part_msg[2]=="You":
                 print(part_msg)
             else:
+                print("\n<press Enter>")
                 while True:
                     acception = input("{} accept ([Y]es or [N]o): ".format(" ".join(part_msg[2:])))
                     if acception in ["Yes", "Y", "yes", "y"]:

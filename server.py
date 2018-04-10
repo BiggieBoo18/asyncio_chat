@@ -1,8 +1,10 @@
 import asyncio
-from collections import namedtuple
+from collections import namedtuple, Counter
+import random
 
 # constant
-LIFEPOINTS = 3 # If janken result is win, LIFEPOINTS increase, or lose, LIFEPOINTS decrease
+LIFEPOINTS = 3  # If janken result is win, LIFEPOINTS increase, or lose, LIFEPOINTS decrease
+N_CARDS    = 10 # Number of cards per user
 
 Client = namedtuple("Client", "reader writer")
 
@@ -17,6 +19,7 @@ class Server:
         self.clients = {}
         self.groups  = {}
         self.janken  = {}
+        self.stat    = {}
 
     @asyncio.coroutine
     def run_server(self):
@@ -59,9 +62,24 @@ class Server:
         for peername, client in self.clients.items():
             client[0].writer.write_eof()
 
+    def deliver_cards(self):
+        cards = sorted([random.choice(["G", "C", "P"]) for i in range(N_CARDS)])
+        stat = Counter(cards)
+        if not self.stat:
+            self.stat = stat
+        else:
+            for k, v in stat.items():
+                tmp = self.stat.get(k)
+                if not tmp:
+                    self.stat[k] = v
+                else:
+                    self.stat[k] += v
+        return cards
+
     def register_user(self, username, client):
         if not self.clients.get(username):
-            self.clients[username] = [client, LIFEPOINTS]
+            cards = self.deliver_cards()
+            self.clients[username] = [client, LIFEPOINTS, cards]
             return True
         else:
             return False
@@ -74,8 +92,10 @@ class Server:
             return False
 
     def send_accept(self, username, opponent):
-        self.send_to_client(username, "janken {} start".format(opponent))
-        self.send_to_client(opponent, "janken {} start".format(username))
+        user_info = self.clients.get(username)
+        oppo_info = self.clients.get(opponent)
+        self.send_to_client(username, "janken {} start {}".format(opponent, " ".join(user_info[2])))
+        self.send_to_client(opponent, "janken {} start {}".format(username, " ".join(oppo_info[2])))
 
     def send_refuse(self, username, opponent):
         self.janken.pop((username, opponent), None)
@@ -91,7 +111,9 @@ class Server:
             return False
         user_lifepoints = user[1]
         oppo_lifepoints = oppo[1]
-        if user_lifepoints==0 or oppo_lifepoints==0:
+        user_cards      = user[2]
+        oppo_cards      = oppo[2]
+        if user_lifepoints==0 or oppo_lifepoints==0 or not user_cards or not oppo_cards:
             ret = False
         return ret
 
@@ -110,6 +132,16 @@ class Server:
         # (Draw, Draw)
         else:
             return ("Draw", "Draw")
+
+    def change_n_cards(self, name, result):
+        ret = True
+        client_info = self.clients.get(name)
+        if client_info:
+            client_info[2].remove(result)
+            self.stat[result] -= 1
+        else:
+            ret = False
+        return ret
 
     def change_lifepoints(self, name, result):
         ret = True
@@ -131,6 +163,8 @@ class Server:
             results = self.janken[(username, opponent)]
             results[0] = part_msg[3]
             if not None in results:
+                self.change_n_cards(opponent, results[1])
+                self.change_n_cards(username, results[0])
                 results = self.game_results(results)
                 self.send_to_client(username, "janken {} You {}".format(opponent, results[0]))
                 self.send_to_client(opponent, "janken {} You {}".format(username, results[1]))
@@ -141,6 +175,8 @@ class Server:
             results = self.janken[(opponent, username)]
             results[1] = part_msg[3]
             if not None in results:
+                self.change_n_cards(opponent, results[0])
+                self.change_n_cards(username, results[1])
                 results = self.game_results(results)
                 self.send_to_client(username, "janken {} You {}".format(opponent, results[1]))
                 self.send_to_client(opponent, "janken {} You {}".format(username, results[0]))
@@ -200,7 +236,10 @@ class Server:
                 self.send_to_client(peername, "[Error] Invalid command: {}".format(msg))
         elif part_msg[0]=="myinfo": # myinfo command
             client_info = self.clients.get(username)
-            self.send_to_client(username, "Your infomation: lifepoints={}".format(client_info[1]))
+            self.send_to_client(username, "Your infomation:\nlifepoints={}\ncards={}".format(client_info[1], client_info[2]))
+        elif part_msg[0]=="stat": # stat command
+            client_info = self.clients.get(username)
+            self.send_to_client(username, "Statistics infomation:\nstat={}".format(dict(self.stat)))
         else:
             self.send_to_client(peername, "[Error] Invalid command: {}".format(msg))
 
@@ -209,7 +248,7 @@ class Server:
         print("Client connected.")
         peername = writer.transport.get_extra_info("peername")
         new_client = Client(reader, writer)
-        self.clients[peername] = [new_client, 0]
+        self.clients[peername] = [new_client, 0, []]
         # self.send_to_client(peername, "Welcome to this server client: {}".format(peername))
         username = ""
         while not reader.at_eof():
