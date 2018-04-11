@@ -1,4 +1,5 @@
 import asyncio
+import send
 
 def watch_stdin():
     msg = input()
@@ -69,6 +70,23 @@ class Client:
                     elif acception in ["No", "N", "no", "n"]:
                         self.send_msg("janken {} refuse".format(part_msg[1]))
                     break
+        elif part_msg[0]=="buylife":
+            name  = part_msg[1]
+            price = part_msg[2]
+            print("\nRecieved buylife proposal\n<press Enter>")
+            while True:
+                acception = input("Do you sell your one lifepoint to {} price of {} ([Y]es or [N]o): ".format(name, price))
+                if acception in ["Yes", "Y", "yes", "y"]:
+                    self.send_msg("buylife {} {} accept".format(name, price))
+                    break
+                elif acception in ["No", "N", "no", "n"]:
+                    self.send_msg("buylife {} {} refuse".format(name, price))
+                    break
+                    
+        elif part_msg[0]=="address":
+            address = part_msg[1]
+            price   = part_msg[2]
+            send.main("gas", address, price) # not gas
         else:
             print('{}'.format(msg))
 

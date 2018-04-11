@@ -25,6 +25,7 @@ class Server:
         self.groups  = {}
         self.janken  = {}
         self.stat    = {}
+        self.buylife = []
 
     @asyncio.coroutine
     def run_server(self):
@@ -96,13 +97,13 @@ class Server:
         else:
             return False
 
-    def send_accept(self, username, opponent):
+    def send_janken_accept(self, username, opponent):
         user_info = self.clients.get(username)
         oppo_info = self.clients.get(opponent)
         self.send_to_client(username, "janken {} start {}".format(opponent, " ".join(user_info[INDEX_CARDS])))
         self.send_to_client(opponent, "janken {} start {}".format(username, " ".join(oppo_info[INDEX_CARDS])))
 
-    def send_refuse(self, username, opponent):
+    def send_janken_refuse(self, username, opponent):
         self.janken.pop((username, opponent), None)
         self.janken.pop((opponent, username), None)
         self.send_to_client(username, "refused janken challenge {} vs {}".format(username, opponent))
@@ -163,7 +164,7 @@ class Server:
             ret = False
         return ret
 
-    def send_result(self, username, opponent, part_msg):
+    def send_janken_result(self, username, opponent, part_msg):
         if (username, opponent) in self.janken:
             results = self.janken[(username, opponent)]
             results[0] = part_msg[3]
@@ -188,6 +189,34 @@ class Server:
                 self.change_lifepoints(opponent, results[0])
                 self.change_lifepoints(username, results[1])
                 self.janken.pop((opponent, username))
+
+    def send_buylife_accept(self, username, name, price):
+        self.send_to_client(username, "accepted buylife between {} and {}".format(username, name))
+        self.send_to_client(name, "accepted buylife between {} and {}".format(username, name))
+        if (username, name) in self.buylife:
+            name_info = self.clients.get(name)
+            name_addr = name_info[INDEX_ADDRESS]
+            name_info[INDEX_LIFEPOINTS] -= 1
+            user_info = self.clients.get(username)
+            user_info[INDEX_LIFEPOINTS] += 1
+            self.send_to_client(username, "address {} {}".format(name_addr, price))
+            self.buylife.remove((username, name))
+        elif (name, username) in self.buylife:
+            user_info = self.clients.get(username)
+            user_addr = user_info[INDEX_ADDRESS]
+            user_info[INDEX_LIFEPOINTS] -= 1
+            name_info = self.clients.get(name)
+            name_info[INDEX_LIFEPOINTS] += 1
+            self.send_to_client(name, "address {} {}".format(user_addr, price))
+            self.buylife.remove((name, username))
+
+    def send_buylife_refuse(self, username, name):
+        if (username, name) in self.buylife:
+            self.buylife.remove((username, name))
+        elif (name, username) in self.buylife:
+            self.buylife.remove((name, username))
+        self.send_to_client(username, "refused buylife between {} and {}".format(username, name))
+        self.send_to_client(name, "refused buylife between {} and {}".format(username, name))
 
     def execute_command(self, peername, new_client, msg, username):
         part_msg = msg.split(" ")
@@ -228,15 +257,36 @@ class Server:
                     (opponent, username) in self.janken):
                     if len(part_msg)>2:
                         if part_msg[2]=="accept":
-                            self.send_accept(username, opponent)
+                            self.send_janken_accept(username, opponent)
                         elif part_msg[2]=="refuse":
-                            self.send_refuse(username, opponent)
+                            self.send_janken_refuse(username, opponent)
                         if part_msg[2]=="result":
-                            self.send_result(username, opponent, part_msg)
+                            self.send_janken_result(username, opponent, part_msg)
                 else:
                     self.janken[(username, opponent)] = [None, None]
                     if not self.send_to_client(opponent, "janken {} Recieved a janken challenge from {}".format(username, username)):
                         self.send_to_client(username, "[Error] Opponent is not found: {}".format(opponent))
+            else:
+                self.send_to_client(peername, "[Error] Invalid command: {}".format(msg))
+        elif part_msg[0]=="buylife": # buylife command
+            if len(part_msg)>2: # buylife username life_price
+                name  = part_msg[1]
+                price = part_msg[2]
+                if ((username, name) in self.buylife or
+                    (name, username) in self.buylife):
+                    print("here1")
+                    if len(part_msg)>3: # buylife username life_price accept/refuse
+                        res = part_msg[3]
+                        if res=="accept":
+                            self.send_buylife_accept(username, name, price)
+                        elif res=="refuse":
+                            self.send_buylife_refuse(username, name)
+                else:
+                    print("here2")
+                    if not (price.isdigit() and self.send_to_client(name, "buylife {} {}".format(username, price))):
+                        self.send_to_client(peername, "[Error] Invalid command: {}".format(msg))
+                    else:
+                        self.buylife.append((username, name))
             else:
                 self.send_to_client(peername, "[Error] Invalid command: {}".format(msg))
         elif part_msg[0]=="myinfo": # myinfo command
