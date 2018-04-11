@@ -5,6 +5,10 @@ import random
 # constant
 LIFEPOINTS = 3  # If janken result is win, LIFEPOINTS increase, or lose, LIFEPOINTS decrease
 N_CARDS    = 10 # Number of cards per user
+INDEX_CLIENT     = 0
+INDEX_LIFEPOINTS = 1
+INDEX_CARDS      = 2
+INDEX_ADDRESS    = 3
 
 Client = namedtuple("Client", "reader writer")
 
@@ -12,10 +16,11 @@ class Server:
     clients = {}
     server = None
 
-    def __init__(self, host="127.0.0.1", port=1818):
-        self.loop = asyncio.get_event_loop()
-        self.host = host
-        self.port = port
+    def __init__(self, host="127.0.0.1", port=1818, address=""):
+        self.loop    = asyncio.get_event_loop()
+        self.host    = host
+        self.port    = port
+        self.address = address
         self.clients = {}
         self.groups  = {}
         self.janken  = {}
@@ -33,7 +38,7 @@ class Server:
     def send_to_client(self, name, msg):
         client = self.clients.get(name)
         if client:
-            client = client[0]
+            client = client[INDEX_CLIENT]
             print("Sending to {}".format(name))
             client.writer.write("{}\n".format(msg).encode())
             return True
@@ -76,10 +81,10 @@ class Server:
                     self.stat[k] += v
         return cards
 
-    def register_user(self, username, client):
+    def register_user(self, username, address, client):
         if not self.clients.get(username):
             cards = self.deliver_cards()
-            self.clients[username] = [client, LIFEPOINTS, cards]
+            self.clients[username] = [client, LIFEPOINTS, cards, address]
             return True
         else:
             return False
@@ -94,8 +99,8 @@ class Server:
     def send_accept(self, username, opponent):
         user_info = self.clients.get(username)
         oppo_info = self.clients.get(opponent)
-        self.send_to_client(username, "janken {} start {}".format(opponent, " ".join(user_info[2])))
-        self.send_to_client(opponent, "janken {} start {}".format(username, " ".join(oppo_info[2])))
+        self.send_to_client(username, "janken {} start {}".format(opponent, " ".join(user_info[INDEX_CARDS])))
+        self.send_to_client(opponent, "janken {} start {}".format(username, " ".join(oppo_info[INDEX_CARDS])))
 
     def send_refuse(self, username, opponent):
         self.janken.pop((username, opponent), None)
@@ -109,10 +114,10 @@ class Server:
         oppo = self.clients.get(opponent)
         if not (user and oppo):
             return False
-        user_lifepoints = user[1]
-        oppo_lifepoints = oppo[1]
-        user_cards      = user[2]
-        oppo_cards      = oppo[2]
+        user_lifepoints = user[INDEX_LIFEPOINTS]
+        oppo_lifepoints = oppo[INDEX_LIFEPOINTS]
+        user_cards      = user[INDEX_CARDS]
+        oppo_cards      = oppo[INDEX_CARDS]
         if user_lifepoints==0 or oppo_lifepoints==0 or not user_cards or not oppo_cards:
             ret = False
         return ret
@@ -137,7 +142,7 @@ class Server:
         ret = True
         client_info = self.clients.get(name)
         if client_info:
-            client_info[2].remove(result)
+            client_info[INDEX_CARDS].remove(result)
             self.stat[result] -= 1
         else:
             ret = False
@@ -149,9 +154,9 @@ class Server:
         if not client_info:
             return False
         if result=="Win":
-            client_info[1] += 1
+            client_info[INDEX_LIFEPOINTS] += 1
         elif result=="Lose":
-            client_info[1] -= 1
+            client_info[INDEX_LIFEPOINTS] -= 1
         elif result=="Draw":
             pass
         else:
@@ -187,8 +192,8 @@ class Server:
     def execute_command(self, peername, new_client, msg, username):
         part_msg = msg.split(" ")
         if part_msg[0]=="join": # join command
-            if len(part_msg)>1: # "join username"
-                if self.register_user(part_msg[1], new_client):
+            if len(part_msg)>2: # "join username"
+                if self.register_user(part_msg[1], part_msg[2], new_client):
                     username = part_msg[1]
                     self.send_to_client(part_msg[1], "Registered: {}".format(part_msg[1]))
                     return username
@@ -236,7 +241,7 @@ class Server:
                 self.send_to_client(peername, "[Error] Invalid command: {}".format(msg))
         elif part_msg[0]=="myinfo": # myinfo command
             client_info = self.clients.get(username)
-            self.send_to_client(username, "Your infomation:\nlifepoints={}\ncards={}".format(client_info[1], client_info[2]))
+            self.send_to_client(username, "Your infomation:\nlifepoints={}\ncards={}\naddress={}".format(client_info[INDEX_LIFEPOINTS], client_info[INDEX_CARDS], client_info[INDEX_ADDRESS]))
         elif part_msg[0]=="stat": # stat command
             client_info = self.clients.get(username)
             self.send_to_client(username, "Statistics infomation:\nstat={}".format(dict(self.stat)))
@@ -281,9 +286,9 @@ class Server:
         self.close_clients()
         self.loop.stop()
 
-def main():
+def main(address):
     loop = asyncio.get_event_loop()
-    mainserver = Server()
+    mainserver = Server(address=address)
     asyncio.ensure_future(mainserver.run_server())
     try:
         loop.run_forever()
@@ -294,4 +299,7 @@ def main():
         loop.close()
 
 if __name__ == "__main__":
-    main()
+    address = ""
+    while not address:
+        address = input("Please type your address: ")
+    main(address)

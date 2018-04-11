@@ -26,7 +26,7 @@ class Client:
         mainloop.stop()
 
     @asyncio.coroutine
-    def create_input(self):
+    def create_input(self, address):
         while True:
             mainloop = asyncio.get_event_loop()
             future = mainloop.run_in_executor(None, watch_stdin)
@@ -37,10 +37,11 @@ class Client:
                 break
             elif len(part_msg)>1 and part_msg[0]=="join":
                 self.username = part_msg[1]
+                input_message += " {}".format(address)
             if input_message:
                 mainloop.call_soon_threadsafe(self.send_msg, input_message)
 
-    def execute_command(self, msg):
+    def execute_command(self, msg, address):
         part_msg = msg.split(" ")
         if part_msg[0]=="janken":
             if part_msg[2]=="start":
@@ -59,7 +60,7 @@ class Client:
             elif part_msg[2]=="You":
                 print(part_msg)
             else:
-                print("\n<press Enter>")
+                print("\nRecieved janken challenge <press Enter>")
                 while True:
                     acception = input("{} accept ([Y]es or [N]o): ".format(" ".join(part_msg[2:])))
                     if acception in ["Yes", "Y", "yes", "y"]:
@@ -72,11 +73,12 @@ class Client:
             print('{}'.format(msg))
 
     @asyncio.coroutine
-    def connect(self):
+    def connect(self, address):
         print('Connecting...')
         try:
             reader, writer = yield from asyncio.open_connection(self.host, self.port)
-            asyncio.ensure_future(self.create_input())
+            print("Connected !")
+            asyncio.ensure_future(self.create_input(address))
             self.reader = reader
             self.writer = writer
             self.sockname = writer.get_extra_info('sockname')
@@ -84,17 +86,17 @@ class Client:
                 msg = yield from reader.readline()
                 # if msg:
                 #     print('{}'.format(msg.decode().strip()))
-                self.execute_command(msg.decode().strip())
+                self.execute_command(msg.decode().strip(), address)
             print('The server closed the connection, press <enter> to exit.')
             self.writer = None
         except ConnectionRefusedError as e:
             print('Connection refused: {}'.format(e))
             self.close()
 
-def main():
+def main(address):
     loop = asyncio.get_event_loop()
     client = Client()
-    asyncio.ensure_future(client.connect())
+    asyncio.ensure_future(client.connect(address))
     try:
         loop.run_forever()
     except KeyboardInterrupt:
@@ -105,4 +107,7 @@ def main():
     loop.close()
 
 if __name__ == '__main__':
-    main()
+    address = ""
+    while not address:
+        address = input("Please type your address: ")
+    main(address)
