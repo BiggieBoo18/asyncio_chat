@@ -10,10 +10,12 @@ class Client:
     writer = None
     sockname = None
 
-    def __init__(self, host='127.0.0.1', port=1818):
-        self.host     = host
-        self.port     = port
-        self.username = ""
+    def __init__(self, host='127.0.0.1', port=1818, wallet_path="", address=""):
+        self.host        = host
+        self.port        = port
+        self.wallet_path = wallet_path
+        self.address     = address
+        self.username    = ""
 
     def send_msg(self, msg):
         msg = '{}\n'.format(msg).encode()
@@ -27,7 +29,7 @@ class Client:
         mainloop.stop()
 
     @asyncio.coroutine
-    def create_input(self, address):
+    def create_input(self):
         while True:
             mainloop = asyncio.get_event_loop()
             future = mainloop.run_in_executor(None, watch_stdin)
@@ -38,11 +40,11 @@ class Client:
                 break
             elif len(part_msg)>1 and part_msg[0]=="join":
                 self.username = part_msg[1]
-                input_message += " {}".format(address)
+                input_message += " {}".format(self.address)
             if input_message:
                 mainloop.call_soon_threadsafe(self.send_msg, input_message)
 
-    def execute_command(self, msg, address):
+    def execute_command(self, msg):
         part_msg = msg.split(" ")
         if part_msg[0]=="janken":
             if part_msg[2]=="start":
@@ -86,17 +88,17 @@ class Client:
         elif part_msg[0]=="address":
             address = part_msg[1]
             price   = part_msg[2]
-            send.main("gas", address, price) # not gas
+            send.main(self.wallet_path, "gas", address, price) # not gas
         else:
             print('{}'.format(msg))
 
     @asyncio.coroutine
-    def connect(self, address):
+    def connect(self):
         print('Connecting...')
         try:
             reader, writer = yield from asyncio.open_connection(self.host, self.port)
             print("Connected !")
-            asyncio.ensure_future(self.create_input(address))
+            asyncio.ensure_future(self.create_input())
             self.reader = reader
             self.writer = writer
             self.sockname = writer.get_extra_info('sockname')
@@ -104,17 +106,17 @@ class Client:
                 msg = yield from reader.readline()
                 # if msg:
                 #     print('{}'.format(msg.decode().strip()))
-                self.execute_command(msg.decode().strip(), address)
+                self.execute_command(msg.decode().strip())
             print('The server closed the connection, press <enter> to exit.')
             self.writer = None
         except ConnectionRefusedError as e:
             print('Connection refused: {}'.format(e))
             self.close()
 
-def main(address):
+def main(wallet_path, address):
     loop = asyncio.get_event_loop()
-    client = Client()
-    asyncio.ensure_future(client.connect(address))
+    client = Client(wallet_path=wallet_path, address=address)
+    asyncio.ensure_future(client.connect())
     try:
         loop.run_forever()
     except KeyboardInterrupt:
@@ -126,6 +128,9 @@ def main(address):
 
 if __name__ == '__main__':
     address = ""
+    wallet_path = ""
+    while not wallet_path:
+        wallet_path = input("Please type your wallet path: ")
     while not address:
         address = input("Please type your address: ")
-    main(address)
+    main(wallet_path, address)

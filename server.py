@@ -16,16 +16,17 @@ class Server:
     clients = {}
     server = None
 
-    def __init__(self, host="127.0.0.1", port=1818, address=""):
-        self.loop    = asyncio.get_event_loop()
-        self.host    = host
-        self.port    = port
-        self.address = address
-        self.clients = {}
-        self.groups  = {}
-        self.janken  = {}
-        self.stat    = {}
-        self.buylife = []
+    def __init__(self, host="127.0.0.1", port=1818, wallet_path="", address=""):
+        self.loop        = asyncio.get_event_loop()
+        self.host        = host
+        self.port        = port
+        self.wallet_path = wallet_path
+        self.address     = address
+        self.clients     = {}
+        self.groups      = {}
+        self.janken      = {}
+        self.stat        = {}
+        self.buylife     = []
 
     @asyncio.coroutine
     def run_server(self):
@@ -268,13 +269,24 @@ class Server:
                         self.send_to_client(username, "[Error] Opponent is not found: {}".format(opponent))
             else:
                 self.send_to_client(peername, "[Error] Invalid command: {}".format(msg))
+        elif part_msg[0]=="transfer": # transfer command
+            if len(part_msg)>2: # "transfer username price"
+                name  = part_msg[1]
+                price = part_msg[2]
+                if not (price.isdigit() and self.send_to_client(name, "You will be remitted soon from {} price=>{}".format(username, price))):
+                    self.send_to_client(peername, "[Error] Invalid command: {}".format(msg))
+                else:
+                    name_info    = self.clients.get(name)
+                    name_address = name_info[INDEX_ADDRESS]
+                    self.send_to_client(username, "address {} {}".format(name_address, price))
+            else:
+                self.send_to_client(peername, "[Error] Invalid command: {}".format(msg))
         elif part_msg[0]=="buylife": # buylife command
             if len(part_msg)>2: # buylife username life_price
                 name  = part_msg[1]
                 price = part_msg[2]
                 if ((username, name) in self.buylife or
                     (name, username) in self.buylife):
-                    print("here1")
                     if len(part_msg)>3: # buylife username life_price accept/refuse
                         res = part_msg[3]
                         if res=="accept":
@@ -282,7 +294,6 @@ class Server:
                         elif res=="refuse":
                             self.send_buylife_refuse(username, name)
                 else:
-                    print("here2")
                     if not (price.isdigit() and self.send_to_client(name, "buylife {} {}".format(username, price))):
                         self.send_to_client(peername, "[Error] Invalid command: {}".format(msg))
                     else:
@@ -336,9 +347,9 @@ class Server:
         self.close_clients()
         self.loop.stop()
 
-def main(address):
+def main(wallet_path, address):
     loop = asyncio.get_event_loop()
-    mainserver = Server(address=address)
+    mainserver = Server(wallet_path=wallet_path, address=address)
     asyncio.ensure_future(mainserver.run_server())
     try:
         loop.run_forever()
@@ -349,7 +360,10 @@ def main(address):
         loop.close()
 
 if __name__ == "__main__":
-    address = ""
+    address     = ""
+    wallet_path = ""
+    while not wallet_path:
+        wallet_path = input("Please type your wallet path: ")
     while not address:
         address = input("Please type your address: ")
-    main(address)
+    main(wallet_path, address)

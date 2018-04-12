@@ -20,7 +20,9 @@ from neo.bin.prompt import PromptInterface
 # Internal: setup the smart contract instance
 # smart_contract = SmartContract(SMART_CONTRACT_HASH)
 
-def do_send(cli, asset_name, address, amount):
+def do_send(cli, wallet_path, asset_name, address, amount):
+    cli.do_open(['wallet', wallet_path])
+    cli.show_wallet([])
     cli.do_send([asset_name, address, amount])
     time.sleep(1)
     reactor.stop()
@@ -28,7 +30,7 @@ def do_send(cli, asset_name, address, amount):
 #
 # Main method which starts everything up
 #
-def main(asset_name, address, amount):
+def main(wallet_path, asset_name, address, amount):
     # settings
     # settings.set_loglevel(logging.DEBUG) # for debug
     settings.set_log_smart_contract_events(False)
@@ -50,14 +52,12 @@ def main(asset_name, address, amount):
     if NotificationDB.instance():
         NotificationDB.instance().start()
     cli = PromptInterface()
-    cli.do_open(['wallet', 'neo-privnet.wallet'])
-    # cli.do_open(['wallet', '/home/biggieboo/hack/blockchain/kaiji/neo-privnet.wallet'])
-    cli.show_wallet([])
     NodeLeader.Instance().Start()
 
-    # neo-privnet.wallet:  AK2nJJpJr6o664CWJKi1QRXjqeic2zRp8y
-    # neo-privnet2.wallet: AdmA3mV2Rw3myD5YuXCNsdJ96eg6dV8acE
-    reactor.callInThread(do_send, cli, asset_name, address, amount)
+    # owner.wlt:   AK2nJJpJr6o664CWJKi1QRXjqeic2zRp8y
+    # client1.wlt: AdmA3mV2Rw3myD5YuXCNsdJ96eg6dV8acE
+    # client2.wlt: APCh64GYzV1oQxjrWPTRwZjpTgqaaWz4Jc
+    reactor.callInThread(do_send, cli, wallet_path, asset_name, address, amount)
     reactor.run()
     # After the reactor is stopped, gracefully shutdown the database.
     cli.do_close_wallet()
